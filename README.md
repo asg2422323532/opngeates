@@ -1,916 +1,238 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Open Gate">
-    <title>Open Gate Camera</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            user-select: none;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #000;
-            color: #fff;
-            overflow: hidden;
-            height: 100vh;
-            height: 100dvh; /* Dynamic viewport height for iPhone */
-            position: fixed;
-            width: 100%;
-        }
-
-        .camera-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            height: 100dvh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* iPhone notch and safe area handling */
-        .status-bar {
-            position: absolute;
-            top: env(safe-area-inset-top, 0);
-            left: env(safe-area-inset-left, 0);
-            right: env(safe-area-inset-right, 0);
-            height: 60px;
-            background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 20px;
-            z-index: 10;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-        }
-
-        .mode-indicator {
-            background: rgba(255,255,255,0.15);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 15px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .open-gate-badge {
-            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
-        }
-
-        .aspect-info {
-            font-size: 13px;
-            font-weight: 500;
-            opacity: 0.9;
-        }
-
-        .viewfinder {
-            flex: 1;
-            position: relative;
-            background: #000;
-            overflow: hidden;
-            margin-top: env(safe-area-inset-top, 0);
-        }
-
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1);
-        }
-
-        /* Open Gate overlay with iPhone-style guides */
-        .open-gate-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-            z-index: 5;
-        }
-
-        .gate-frame {
-            position: absolute;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-        }
-
-        .gate-corners {
-            position: absolute;
-        }
-
-        .gate-corners::before,
-        .gate-corners::after {
-            content: '';
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #ff6b6b;
-        }
-
-        .gate-corners.top-left::before {
-            top: 0;
-            left: 0;
-            border-right: none;
-            border-bottom: none;
-        }
-
-        .gate-corners.top-right::before {
-            top: 0;
-            right: 0;
-            border-left: none;
-            border-bottom: none;
-        }
-
-        .gate-corners.bottom-left::after {
-            bottom: 0;
-            left: 0;
-            border-right: none;
-            border-top: none;
-        }
-
-        .gate-corners.bottom-right::after {
-            bottom: 0;
-            right: 0;
-            border-left: none;
-            border-top: none;
-        }
-
-        .full-gate {
-            top: 10%;
-            left: 10%;
-            right: 10%;
-            bottom: 25%;
-        }
-
-        /* iPhone-style focus indicator */
-        .focus-indicator {
-            position: absolute;
-            width: 80px;
-            height: 80px;
-            border: 2px solid #ffff00;
-            border-radius: 50%;
-            pointer-events: none;
-            opacity: 0;
-            transform: scale(1.5);
-            transition: all 0.3s ease;
-            z-index: 8;
-        }
-
-        .focus-indicator.active {
-            opacity: 1;
-            transform: scale(1);
-        }
-
-        /* iPhone-style controls */
-        .controls {
-            position: absolute;
-            bottom: env(safe-area-inset-bottom, 0);
-            left: env(safe-area-inset-left, 0);
-            right: env(safe-area-inset-right, 0);
-            height: 140px;
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 20px 30px;
-        }
-
-        .left-controls {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .camera-flip-btn {
-            width: 44px;
-            height: 44px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 22px;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-        }
-
-        .camera-flip-btn:active {
-            transform: scale(0.9);
-            background: rgba(255,255,255,0.2);
-        }
-
-        .mode-selector {
-            display: flex;
-            gap: 24px;
-            margin-top: 8px;
-        }
-
-        .mode-btn {
-            background: none;
-            border: none;
-            color: rgba(255,255,255,0.6);
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            padding: 8px 0;
-            position: relative;
-        }
-
-        .mode-btn.active {
-            color: #fff;
-            font-weight: 600;
-        }
-
-        .mode-btn.active::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 30px;
-            height: 2px;
-            background: #fff;
-            border-radius: 1px;
-        }
-
-        /* iPhone-style capture button */
-        .capture-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .capture-btn {
-            width: 80px;
-            height: 80px;
-            border: 6px solid #fff;
-            border-radius: 50%;
-            background: transparent;
-            cursor: pointer;
-            transition: all 0.15s ease;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .capture-btn:active {
-            transform: scale(0.9);
-        }
-
-        .capture-btn.recording {
-            border-color: #ff4757;
-            animation: recording-pulse 1.5s ease-in-out infinite;
-        }
-
-        .capture-btn.recording .capture-inner {
-            width: 28px;
-            height: 28px;
-            background: #ff4757;
-            border-radius: 6px;
-        }
-
-        .capture-inner {
-            width: 68px;
-            height: 68px;
-            background: #fff;
-            border-radius: 50%;
-            transition: all 0.15s ease;
-        }
-
-        @keyframes recording-pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4); }
-            50% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
-        }
-
-        .right-controls {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .settings-btn {
-            width: 44px;
-            height: 44px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 22px;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-        }
-
-        .settings-btn:active {
-            transform: scale(0.9);
-            background: rgba(255,255,255,0.2);
-        }
-
-        /* Recording indicator */
-        .recording-indicator {
-            position: absolute;
-            top: calc(env(safe-area-inset-top, 0) + 70px);
-            left: 20px;
-            display: none;
-            align-items: center;
-            gap: 8px;
-            background: rgba(0,0,0,0.8);
-            padding: 8px 16px;
-            border-radius: 20px;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            z-index: 10;
-        }
-
-        .recording-indicator.active {
-            display: flex;
-        }
-
-        .rec-dot {
-            width: 8px;
-            height: 8px;
-            background: #ff4757;
-            border-radius: 50%;
-            animation: blink 1s ease-in-out infinite;
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0.3; }
-        }
-
-        .recording-time {
-            font-size: 16px;
-            font-weight: 600;
-            font-variant-numeric: tabular-nums;
-        }
-
-        /* Format info panel */
-        .format-info {
-            position: absolute;
-            bottom: 160px;
-            left: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.7);
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 13px;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            line-height: 1.4;
-            opacity: 0.9;
-        }
-
-        /* Toast notifications */
-        .toast {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9);
-            padding: 16px 24px;
-            border-radius: 16px;
-            font-size: 16px;
-            font-weight: 500;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            opacity: 0;
-            transition: all 0.3s ease;
-            z-index: 20;
-            max-width: 80%;
-            text-align: center;
-        }
-
-        .toast.show {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1);
-        }
-
-        /* Zoom control */
-        .zoom-control {
-            position: absolute;
-            bottom: 180px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            background: rgba(0,0,0,0.6);
-            padding: 8px 20px;
-            border-radius: 20px;
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-        }
-
-        .zoom-btn {
-            background: none;
-            border: none;
-            color: #fff;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            padding: 8px 12px;
-            border-radius: 12px;
-            transition: all 0.2s ease;
-        }
-
-        .zoom-btn.active {
-            background: rgba(255,255,255,0.2);
-        }
-
-        /* Haptic feedback simulation */
-        @keyframes haptic {
-            0% { transform: scale(1); }
-            50% { transform: scale(0.98); }
-            100% { transform: scale(1); }
-        }
-
-        .haptic {
-            animation: haptic 0.1s ease;
-        }
-
-        /* iPhone specific optimizations */
-        @supports (-webkit-touch-callout: none) {
-            .camera-container {
-                height: -webkit-fill-available;
-            }
-        }
-
-        /* Dark mode optimization */
-        @media (prefers-color-scheme: dark) {
-            .mode-indicator {
-                background: rgba(255,255,255,0.1);
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="camera-container">
-        <div class="status-bar">
-            <div class="mode-indicator">
-                <span class="open-gate-badge">Open Gate</span>
-                <span class="aspect-info">4:3</span>
-            </div>
-            <div style="font-size: 14px; font-weight: 500;">Full Sensor</div>
-        </div>
-
-        <div class="recording-indicator" id="recordingIndicator">
-            <div class="rec-dot"></div>
-            <span class="recording-time" id="recordingTime">00:00</span>
-        </div>
-
-        <div class="viewfinder">
-            <video id="video" autoplay muted playsinline webkit-playsinline></video>
-            <div class="open-gate-overlay">
-                <div class="gate-frame full-gate"></div>
-                <div class="gate-corners top-left full-gate"></div>
-                <div class="gate-corners top-right full-gate"></div>
-                <div class="gate-corners bottom-left full-gate"></div>
-                <div class="gate-corners bottom-right full-gate"></div>
-            </div>
-            <div class="focus-indicator" id="focusIndicator"></div>
-        </div>
-
-        <div class="zoom-control">
-            <button class="zoom-btn active" data-zoom="1">1×</button>
-            <button class="zoom-btn" data-zoom="2">2×</button>
-            <button class="zoom-btn" data-zoom="3">3×</button>
-        </div>
-
-        <div class="format-info">
-            <div><strong>Open Gate:</strong> Full sensor utilization</div>
-            <div><strong>Format:</strong> 4:3 aspect ratio • Maximum resolution</div>
-        </div>
-
-        <div class="controls">
-            <div class="left-controls">
-                <button class="camera-flip-btn" id="flipBtn">🔄</button>
-                <div class="mode-selector">
-                    <button class="mode-btn" data-mode="photo">PHOTO</button>
-                    <button class="mode-btn active" data-mode="video">VIDEO</button>
-                    <button class="mode-btn" data-mode="cinematic">CINEMA</button>
-                </div>
-            </div>
-
-            <div class="capture-container">
-                <div class="capture-btn" id="captureBtn">
-                    <div class="capture-inner"></div>
-                </div>
-            </div>
-
-            <div class="right-controls">
-                <button class="settings-btn" id="settingsBtn">⚙</button>
-            </div>
-        </div>
-
-        <div class="toast" id="toast"></div>
-    </div>
-
-    <script>
-        class iPhoneOpenGateCamera {
-            constructor() {
-                this.video = document.getElementById('video');
-                this.captureBtn = document.getElementById('captureBtn');
-                this.flipBtn = document.getElementById('flipBtn');
-                this.settingsBtn = document.getElementById('settingsBtn');
-                this.recordingIndicator = document.getElementById('recordingIndicator');
-                this.recordingTime = document.getElementById('recordingTime');
-                this.focusIndicator = document.getElementById('focusIndicator');
-                this.toast = document.getElementById('toast');
-                
-                this.isRecording = false;
-                this.mediaRecorder = null;
-                this.recordingStartTime = null;
-                this.recordingTimer = null;
-                this.currentMode = 'video';
-                this.currentZoom = 1;
-                this.facingMode = 'environment';
-                this.stream = null;
-                
-                this.init();
-            }
-
-            async init() {
-                await this.setupCamera();
-                this.setupEventListeners();
-                this.preventZoom();
-                this.showToast('Open Gate mode activated\nFull sensor recording enabled');
-            }
-
-            preventZoom() {
-                // Prevent zoom on double-tap
-                let lastTouchEnd = 0;
-                document.addEventListener('touchend', (event) => {
-                    const now = (new Date()).getTime();
-                    if (now - lastTouchEnd <= 300) {
-                        event.preventDefault();
-                    }
-                    lastTouchEnd = now;
-                }, false);
-
-                // Prevent pinch zoom
-                document.addEventListener('touchmove', (event) => {
-                    if (event.scale !== 1) {
-                        event.preventDefault();
-                    }
-                }, { passive: false });
-            }
-
-            async setupCamera() {
-                try {
-                    const constraints = {
-                        video: {
-                            width: { ideal: 1920 },
-                            height: { ideal: 1440 }, // 4:3 for Open Gate
-                            frameRate: { ideal: 30 },
-                            facingMode: this.facingMode
-                        },
-                        audio: true
-                    };
-
-                    if (this.stream) {
-                        this.stream.getTracks().forEach(track => track.stop());
-                    }
-
-                    this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-                    this.video.srcObject = this.stream;
-
-                    // iPhone-specific optimizations
-                    this.video.setAttribute('webkit-playsinline', '');
-                    this.video.setAttribute('playsinline', '');
-                    
-                    const track = this.stream.getVideoTracks()[0];
-                    const settings = track.getSettings();
-                    console.log('Open Gate Resolution:', settings.width, 'x', settings.height);
-                    
-                } catch (error) {
-                    console.error('Camera access denied:', error);
-                    this.showToast('Camera access required\nPlease allow camera permissions');
-                }
-            }
-
-            setupEventListeners() {
-                // Capture button
-                this.captureBtn.addEventListener('touchstart', () => {
-                    this.hapticFeedback();
-                });
-
-                this.captureBtn.addEventListener('click', () => {
-                    if (this.currentMode === 'video') {
-                        this.toggleRecording();
-                    } else {
-                        this.capturePhoto();
-                    }
-                });
-
-                // Camera flip
-                this.flipBtn.addEventListener('click', () => {
-                    this.hapticFeedback();
-                    this.flipCamera();
-                });
-
-                // Settings
-                this.settingsBtn.addEventListener('click', () => {
-                    this.hapticFeedback();
-                    this.showSettings();
-                });
-
-                // Mode switching
-                document.querySelectorAll('.mode-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        this.hapticFeedback();
-                        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        this.currentMode = btn.dataset.mode;
-                        this.updateModeUI();
-                    });
-                });
-
-                // Zoom controls
-                document.querySelectorAll('.zoom-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        this.hapticFeedback();
-                        document.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        this.currentZoom = parseFloat(btn.dataset.zoom);
-                        this.applyZoom();
-                    });
-                });
-
-                // Touch to focus
-                this.video.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    const touch = e.touches[0];
-                    const rect = this.video.getBoundingClientRect();
-                    const x = touch.clientX - rect.left;
-                    const y = touch.clientY - rect.top;
-                    this.showFocusIndicator(x, y);
-                });
-
-                // Swipe gestures for mode switching
-                this.setupSwipeGestures();
-
-                // Prevent context menu on long press
-                document.addEventListener('contextmenu', (e) => e.preventDefault());
-            }
-
-            setupSwipeGestures() {
-                let startY = 0;
-                let startX = 0;
-
-                this.video.addEventListener('touchstart', (e) => {
-                    startY = e.touches[0].clientY;
-                    startX = e.touches[0].clientX;
-                });
-
-                this.video.addEventListener('touchend', (e) => {
-                    if (!startY || !startX) return;
-
-                    const endY = e.changedTouches[0].clientY;
-                    const endX = e.changedTouches[0].clientX;
-                    const diffY = startY - endY;
-                    const diffX = startX - endX;
-
-                    // Horizontal swipe for mode change
-                    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
-                        if (diffX > 0) {
-                            this.nextMode();
-                        } else {
-                            this.prevMode();
-                        }
-                    }
-
-                    startY = 0;
-                    startX = 0;
-                });
-            }
-
-            nextMode() {
-                const modes = ['photo', 'video', 'cinematic'];
-                const currentIndex = modes.indexOf(this.currentMode);
-                const nextIndex = (currentIndex + 1) % modes.length;
-                this.switchToMode(modes[nextIndex]);
-            }
-
-            prevMode() {
-                const modes = ['photo', 'video', 'cinematic'];
-                const currentIndex = modes.indexOf(this.currentMode);
-                const prevIndex = (currentIndex - 1 + modes.length) % modes.length;
-                this.switchToMode(modes[prevIndex]);
-            }
-
-            switchToMode(mode) {
-                this.hapticFeedback();
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
-                this.currentMode = mode;
-                this.updateModeUI();
-            }
-
-            async flipCamera() {
-                this.facingMode = this.facingMode === 'user' ? 'environment' : 'user';
-                await this.setupCamera();
-                this.showToast(`Switched to ${this.facingMode === 'user' ? 'front' : 'back'} camera`);
-            }
-
-            applyZoom() {
-                const track = this.stream.getVideoTracks()[0];
-                const capabilities = track.getCapabilities();
-                
-                if (capabilities.zoom) {
-                    track.applyConstraints({
-                        advanced: [{ zoom: this.currentZoom }]
-                    }).catch(console.error);
-                } else {
-                    // Fallback: CSS transform zoom
-                    this.video.style.transform = `scaleX(-1) scale(${this.currentZoom})`;
-                }
-                
-                this.showToast(`${this.currentZoom}× zoom applied`);
-            }
-
-            showFocusIndicator(x, y) {
-                this.focusIndicator.style.left = `${x - 40}px`;
-                this.focusIndicator.style.top = `${y - 40}px`;
-                this.focusIndicator.classList.add('active');
-                
-                setTimeout(() => {
-                    this.focusIndicator.classList.remove('active');
-                }, 1000);
-
-                // Attempt to focus if supported
-                const track = this.stream.getVideoTracks()[0];
-                if (track.getCapabilities().focusMode) {
-                    track.applyConstraints({
-                        advanced: [{ focusMode: 'single-shot' }]
-                    }).catch(console.error);
-                }
-            }
-
-            async toggleRecording() {
-                if (!this.isRecording) {
-                    await this.startRecording();
-                } else {
-                    this.stopRecording();
-                }
-            }
-
-            async startRecording() {
-                try {
-                    const options = {
-                        mimeType: 'video/webm;codecs=vp9,opus',
-                        videoBitsPerSecond: 15000000 // 15 Mbps for high quality
-                    };
-
-                    this.mediaRecorder = new MediaRecorder(this.stream, options);
-                    this.recordedChunks = [];
-
-                    this.mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            this.recordedChunks.push(event.data);
-                        }
-                    };
-
-                    this.mediaRecorder.onstop = () => {
-                        this.saveRecording();
-                    };
-
-                    this.mediaRecorder.start();
-                    this.isRecording = true;
-                    this.recordingStartTime = Date.now();
-                    
-                    this.captureBtn.classList.add('recording');
-                    this.recordingIndicator.classList.add('active');
-                    this.startRecordingTimer();
-                    
-                    this.hapticFeedback();
-                    this.showToast('Open Gate recording started');
-
-                } catch (error) {
-                    console.error('Recording failed:', error);
-                    this.showToast('Recording failed\nTry a different format');
-                }
-            }
-
-            stopRecording() {
-                if (this.mediaRecorder && this.isRecording) {
-                    this.mediaRecorder.stop();
-                    this.isRecording = false;
-                    
-                    this.captureBtn.classList.remove('recording');
-                    this.recordingIndicator.classList.remove('active');
-                    this.stopRecordingTimer();
-                    
-                    this.hapticFeedback();
-                    this.showToast('Open Gate recording saved');
-                }
-            }
-
-            startRecordingTimer() {
-                this.recordingTimer = setInterval(() => {
-                    const elapsed = Date.now() - this.recordingStartTime;
-                    const minutes = Math.floor(elapsed / 60000);
-                    const seconds = Math.floor((elapsed % 60000) / 1000);
-                    this.recordingTime.textContent = 
-                        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                }, 1000);
-            }
-
-            stopRecordingTimer() {
-                if (this.recordingTimer) {
-                    clearInterval(this.recordingTimer);
-                    this.recordingTimer = null;
-                }
-                this.recordingTime.textContent = '00:00';
-            }
-
-            saveRecording() {
-                const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `opengate_${Date.now()}.webm`;
-                a.click();
-                URL.revokeObjectURL(url);
-            }
-
-            capturePhoto() {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                
-                canvas.width = this.video.videoWidth;
-                canvas.height = this.video.videoHeight;
-                
-                // Flip back for natural orientation
-                ctx.scale(-1, 1);
-                ctx.translate(-canvas.width, 0);
-                ctx.drawImage(this.video, 0, 0);
-                
-                canvas.toBlob((blob) => {
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `opengate_photo_${Date.now()}.jpg`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                }, 'image/jpeg', 0.95);
-                
-                this.hapticFeedback();
-                this.showToast('Open Gate photo captured');
-            }
-
-            updateModeUI() {
-                const formatInfo = document.querySelector('.format-info');
-                switch(this.currentMode) {
-                    case 'photo':
-                        formatInfo.innerHTML = `
-                            <div><strong>Open Gate:</strong> Full sensor photo capture</div>
-                            <div><strong>Format:</strong> 4:3 maximum resolution • JPEG</div>
-                        `;
-                        break;
-                    case 'video':
-                        formatInfo.innerHTML = `
-                            <div><strong>Open Gate:</strong> Full sensor utilization</div>
-                            <div><strong>Format:</strong> 4:3 aspect ratio • Maximum resolution</div>
-                        `;
-                        break;
-                    case 'cinematic':
-                        formatInfo.innerHTML = `
-                            <div><strong>Open
+# 📱 Open Gate Camera App
+
+A professional iPhone camera app that enables **Open Gate** shooting - capturing the full sensor area without typical video format crops for maximum post-production flexibility.
+
+## 🎯 What is Open Gate?
+
+Open Gate refers to utilizing the **full camera sensor area** instead of cropping to standard video formats (like 16:9). This provides:
+
+- **Maximum image data** for post-production
+- **4:3 aspect ratio** capturing the full sensor
+- **Professional flexibility** for cropping in post
+- **Higher resolution** than standard video modes
+
+## ✨ Features
+
+### 📹 Core Camera Features
+- **Full Sensor Utilization** - Capture maximum image data
+- **4:3 Aspect Ratio** - True Open Gate format
+- **High-Quality Recording** - Up to 15 Mbps bitrate
+- **Multiple Modes** - Photo, Video, and Cinematic
+- **Real-time Preview** - Live Open Gate viewfinder
+
+### 🎮 iPhone-Optimized Controls
+- **Touch to Focus** - Tap anywhere to focus
+- **Pinch to Zoom** - 1×, 2×, 3× zoom levels
+- **Swipe Mode Switching** - Horizontal swipes to change modes
+- **Camera Flip** - Switch between front/back cameras
+- **Haptic Feedback** - Native iOS-style vibrations
+
+### 🎨 Professional UI
+- **iPhone-Native Design** - Follows iOS design guidelines
+- **Safe Area Support** - Optimized for iPhone notch and Dynamic Island
+- **Recording Indicators** - Live timer and status
+- **Visual Guides** - Open Gate frame overlay
+- **Dark Mode Ready** - Automatic dark mode support
+
+## 📱 iPhone Compatibility
+
+### ✅ Supported Features
+- **Safari Browser** - Full functionality
+- **Camera Access** - Front and back cameras
+- **Media Recording** - High-quality video/photo capture
+- **Touch Gestures** - Native iOS-style interactions
+- **Full Screen Mode** - Immersive camera experience
+
+### 📋 Requirements
+- **iOS 12+** recommended
+- **Safari browser** (required for camera access)
+- **HTTPS connection** (for camera permissions)
+- **Camera/Microphone permissions**
+
+## 🚀 Installation & Setup
+
+### Option 1: GitHub Pages (Recommended)
+1. Fork this repository
+2. Enable GitHub Pages in Settings
+3. Visit your GitHub Pages URL on iPhone Safari
+4. Add to Home Screen for app-like experience
+
+### Option 2: Local Development
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/opengate-camera.git
+
+# Navigate to directory
+cd opengate-camera
+
+# Start local server (Python)
+python -m http.server 8000
+
+# Or use Node.js
+npx serve .
+
+# Access on iPhone Safari: http://your-ip:8000
+```
+
+### Option 3: Direct Hosting
+Upload `index.html` to any web hosting service that supports HTTPS:
+- Netlify
+- Vercel  
+- Firebase Hosting
+- AWS S3 + CloudFront
+
+## 📖 Usage Guide
+
+### 🎬 Recording Open Gate Video
+1. **Launch the app** in Safari
+2. **Grant permissions** for camera and microphone
+3. **Select Video mode** (default)
+4. **Frame your shot** using the Open Gate guides
+5. **Tap capture button** to start/stop recording
+6. **Files auto-download** to your device
+
+### 📸 Capturing Open Gate Photos
+1. **Switch to Photo mode**
+2. **Compose your shot** with full sensor preview
+3. **Tap capture button** to take photo
+4. **Photo downloads** automatically
+
+### 🎯 Advanced Features
+- **Touch to Focus**: Tap anywhere on screen
+- **Zoom Control**: Use 1×, 2×, 3× buttons
+- **Mode Switching**: Swipe left/right or use buttons
+- **Camera Flip**: Tap the flip button (🔄)
+
+## ⚙️ Technical Specifications
+
+### 📹 Video Recording
+- **Resolution**: Up to 1920×1440 (4:3)
+- **Format**: WebM (VP9 codec)
+- **Bitrate**: 15 Mbps for maximum quality
+- **Frame Rate**: 30 FPS
+- **Audio**: Opus codec, stereo
+
+### 📸 Photo Capture
+- **Resolution**: Full sensor resolution
+- **Format**: JPEG (95% quality)
+- **Aspect Ratio**: 4:3 Open Gate
+- **Color Space**: sRGB
+
+### 🔧 Browser APIs Used
+- **MediaDevices API** - Camera access
+- **MediaRecorder API** - Video recording
+- **Canvas API** - Photo capture
+- **Blob API** - File handling
+
+## 🛠️ Development
+
+### 📁 Project Structure
+```
+opengate-camera/
+├── index.html          # Main app file
+├── README.md          # This file
+└── assets/           # Screenshots (optional)
+```
+
+### 🔨 Customization
+The app is built as a single HTML file for easy deployment. Key areas for customization:
+
+- **Video Quality**: Modify `videoBitsPerSecond` in `startRecording()`
+- **UI Colors**: Update CSS custom properties
+- **Aspect Ratios**: Adjust Open Gate dimensions
+- **Recording Formats**: Change `mimeType` options
+
+### 🧪 Testing
+```bash
+# Test on different devices
+# iPhone Safari (primary target)
+# iPad Safari
+# Desktop Safari (limited functionality)
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**❌ Camera not working**
+- Ensure you're using Safari (not Chrome/Firefox)
+- Check camera permissions in Settings
+- Verify HTTPS connection
+- Try refreshing the page
+
+**❌ Recording fails**
+- Check available storage space
+- Ensure stable internet connection
+- Try different recording quality settings
+- Clear browser cache
+
+**❌ Files not downloading**
+- Check Safari download settings
+- Ensure popup blocker is disabled
+- Try a different browser tab
+
+### 🔧 Debug Mode
+Open Safari Developer Tools (if available) to see console logs:
+- Camera resolution information
+- Recording status updates
+- Error messages
+
+## 📱 iPhone-Specific Notes
+
+### 🔒 Permissions
+- **First launch**: Safari will request camera/microphone access
+- **Settings**: Manage permissions in Safari > Settings > Camera
+- **Privacy**: All processing happens locally on device
+
+### 💾 File Handling
+- **Downloads**: Files save to Safari Downloads folder
+- **File App**: Access via Files app > Downloads
+- **Sharing**: Use iOS share sheet to send files
+
+### 🔋 Performance
+- **Battery**: Camera usage may drain battery quickly
+- **Heat**: Extended recording may cause device warming
+- **Memory**: Large files may require device restart
+
+## 🚀 Deployment Options
+
+### Production Deployment
+1. **GitHub Pages**: Free, easy setup
+2. **Netlify**: Drag-and-drop deployment
+3. **Vercel**: Git-based deployment
+4. **Firebase Hosting**: Google's hosting platform
+
+### Enterprise Deployment
+- **Internal hosting**: Deploy on company servers
+- **App Store**: Convert to native app using Cordova/PhoneGap
+- **Progressive Web App**: Add manifest.json for PWA features
+
+## 🤝 Contributing
+
+Contributions welcome! Areas for improvement:
+
+- **Additional camera controls** (ISO, shutter speed)
+- **More recording formats** (ProRes, H.265)
+- **Advanced editing features**
+- **Cloud storage integration**
+- **Social sharing features**
+
+## 📄 License
+
+MIT License - Feel free to use and modify for your projects.
+
+## 📞 Support
+
+- **Issues**: Open GitHub issues for bugs
+- **Feature Requests**: Submit enhancement ideas
+- **Documentation**: Improve this README
+
+## 🎉 Acknowledgments
+
+- Inspired by professional cinema cameras
+- Built for iPhone Safari optimization
+- Designed for content creators and filmmakers
+
+---
+
+**📱 Ready to shoot in Open Gate? Launch the app and start capturing the full sensor!**
